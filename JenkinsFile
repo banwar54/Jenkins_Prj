@@ -1,0 +1,87 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_HUB_CREDENTIALS = 'docker-hub-credentials'  
+        BACKEND_IMAGE = "rhearobinson23/quiz-backend:latest"
+        FRONTEND_IMAGE = "rhearobinson23/quiz-frontend:latest"
+        KUBECONFIG = "$HOME/.kube/config"  
+        GIT_REPO = 'https://github.com/rhearobinson19/Mthree_Final_Project.git'  
+        GIT_BRANCH = 'main'  
+        KUBECTL_PATH = "/var/lib/jenkins/.kube/config"  // Set a user-writable directory
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                script {
+                    sh "rm -rf workspace"
+                    sh "git clone -b ${GIT_BRANCH} ${GIT_REPO} workspace"
+                }
+            }
+        }
+
+        stage('Build and Push Backend Image') {
+            steps {
+                script {
+                    // withCredentials([usernamePassword(credentialsId: DOCKER_HUB_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        // sh "docker login -u $DOCKER_USER -p $DOCKER_PASS"
+                        sh "docker build -t ${BACKEND_IMAGE} ~/workspace/Quiz-App/Backend"
+                        // sh "docker push ${BACKEND_IMAGE}"
+                    // }
+                }
+            }
+        }
+
+        stage('Build and Push Frontend Image') {
+            steps {
+                script {
+                    // withCredentials([usernamePassword(credentialsId: DOCKER_HUB_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    //     sh "docker login -u $DOCKER_USER -p $DOCKER_PASS"
+                        sh "docker build -t ${FRONTEND_IMAGE} ~/workspace/Quiz-App/Frontend"
+                        // sh "docker push ${FRONTEND_IMAGE}"
+                    // }
+                }
+            }
+        }
+
+        stage('Install kubectl') {
+            steps {
+                script {
+                    sh '''
+                    mkdir -p $HOME/bin
+                    if [ ! -f "$KUBECTL_PATH" ]; then
+                        echo 'Installing kubectl...'
+                        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                        chmod +x kubectl
+                        mv kubectl $HOME/bin/
+                    else
+                        echo 'kubectl is already installed'
+                    fi
+                    export PATH=$HOME/bin:$PATH
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                   sh '''
+                    export KUBECONFIG=/var/lib/jenkins/.kube/config
+                    sudo /usr/local/bin/kubectl apply -f /var/lib/jenkins/workspace/Quiz-App/k8s/
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Deployment Successful! Access your app via Ingress URL.'
+        }
+        failure {
+            echo 'Deployment Failed! Check logs for details.'
+        }
+    }
+}
